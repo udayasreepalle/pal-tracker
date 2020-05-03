@@ -1,5 +1,8 @@
 package io.pivotal.pal.tracker;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -9,15 +12,22 @@ import java.util.List;
 @RestController
 public class TimeEntryController {
     private TimeEntryRepository timeEntryRepository;
+    private final DistributionSummary timeEntrySummary;
+    private final Counter actionCounter;
 
-    public TimeEntryController(TimeEntryRepository timeEntryRepository) {
+    public TimeEntryController(TimeEntryRepository timeEntryRepository,
+                               MeterRegistry meterRegistry) {
         this.timeEntryRepository = timeEntryRepository;
+        timeEntrySummary = meterRegistry.summary("timeEntry.summary");
+        actionCounter =  meterRegistry.counter("timeEntry.actionCounter");
     }
 
     @RequestMapping(path ="/time-entries", method = RequestMethod.POST)
     @ResponseBody
     public ResponseEntity create(@RequestBody TimeEntry timeEntry){
-        TimeEntry timeEntryCreated = this.timeEntryRepository.create(timeEntry);
+        actionCounter.increment();
+        timeEntrySummary.record(timeEntryRepository.list().size());
+        TimeEntry timeEntryCreated = timeEntryRepository.create(timeEntry);
         ResponseEntity response = new ResponseEntity(timeEntryCreated, HttpStatus.CREATED);
         return response;
     }
@@ -25,7 +35,8 @@ public class TimeEntryController {
     @RequestMapping(path = "time-entries/{id}", method = RequestMethod.GET)
     @ResponseBody
     public ResponseEntity read(@PathVariable long id){
-        TimeEntry timeEntry = this.timeEntryRepository.find(id);
+        actionCounter.increment();
+        TimeEntry timeEntry = timeEntryRepository.find(id);
         HttpStatus httpStatus = HttpStatus.OK;
 
         if (timeEntry == null){
@@ -39,7 +50,8 @@ public class TimeEntryController {
     @RequestMapping(path = "/time-entries/{id}", method = RequestMethod.PUT)
     @ResponseBody
     public ResponseEntity update(@PathVariable long id, @RequestBody TimeEntry expected){
-        TimeEntry timeEntry =this.timeEntryRepository.update(id, expected);
+        actionCounter.increment();
+        TimeEntry timeEntry = timeEntryRepository.update(id, expected);
         HttpStatus httpStatus = HttpStatus.OK;
 
         if (timeEntry == null){
@@ -52,7 +64,9 @@ public class TimeEntryController {
     @RequestMapping(path = "/time-entries/{id}", method = RequestMethod.DELETE)
     @ResponseBody
     public ResponseEntity delete(@PathVariable long id){
-        this.timeEntryRepository.delete(id);
+        actionCounter.increment();
+        timeEntrySummary.record(timeEntryRepository.list().size());
+        timeEntryRepository.delete(id);
         ResponseEntity response = new ResponseEntity(HttpStatus.NO_CONTENT);
         return response;
     }
@@ -60,7 +74,8 @@ public class TimeEntryController {
     @RequestMapping(path = "/time-entries", method = RequestMethod.GET)
     @ResponseBody
     public ResponseEntity<List<TimeEntry>> list(){
-        ResponseEntity response = new ResponseEntity(this.timeEntryRepository.list(), HttpStatus.OK);
+        actionCounter.increment();
+        ResponseEntity response = new ResponseEntity(timeEntryRepository.list(), HttpStatus.OK);
         return response;
     }
 }
